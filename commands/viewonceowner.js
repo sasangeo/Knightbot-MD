@@ -1,6 +1,40 @@
 const { downloadContentFromMessage } = require('@whiskeysockets/baileys');
 const settings = require('../settings');
 
+function findViewOnceTarget(rawMsg) {
+    if (!rawMsg) return null;
+    const root = rawMsg.ephemeralMessage?.message || rawMsg;
+
+    const isWrapperKey = (key) => (
+        key === 'viewOnceMessage' || key === 'viewOnceMessageV2' || key === 'viewOnceMessageV2Extension'
+    );
+
+    function walk(node, insideVO) {
+        if (!node || typeof node !== 'object') return null;
+        let current = node.message ? node.message : node;
+        if (current && current.message) current = current.message;
+
+        if (current.imageMessage) {
+            const im = current.imageMessage;
+            if (insideVO || im.viewOnce || im.view_once) return { type: 'image', node: im };
+        }
+        if (current.videoMessage) {
+            const vm = current.videoMessage;
+            if (insideVO || vm.viewOnce || vm.view_once) return { type: 'video', node: vm };
+        }
+
+        for (const [key, value] of Object.entries(current)) {
+            if (!value || typeof value !== 'object') continue;
+            const nextInside = insideVO || isWrapperKey(key);
+            const found = walk(value, nextInside);
+            if (found) return found;
+        }
+        return null;
+    }
+
+    return walk(root, false);
+}
+
 async function handleViewOnce(sock, m) {
     try {
         const msg = m.message;
@@ -11,21 +45,9 @@ async function handleViewOnce(sock, m) {
         const targetJid = (settings.reportGroups && settings.reportGroups.viewonce) ? settings.reportGroups.viewonce : fallbackOwner;
         try { console.log('🛈 VIEWONCE target:', targetJid); } catch {}
 
-        // cek apakah pesan punya image atau video view once (cover berbagai varian nested & ephemeral)
-        const base = msg.ephemeralMessage?.message || msg;
-        let viewOnceMsg = (
-            base.viewOnceMessageV2?.message ||
-            base.viewOnceMessageV2Extension?.message ||
-            base.viewOnceMessage?.message ||
-            null
-        );
-        if (viewOnceMsg?.message) viewOnceMsg = viewOnceMsg.message;
-        if (viewOnceMsg?.message) viewOnceMsg = viewOnceMsg.message;
-        // Fallback: beberapa device mengirim langsung imageMessage/videoMessage dengan flag viewOnce
-        const imgDirect = (base.imageMessage && (base.imageMessage.viewOnce || base.imageMessage.view_once)) ? base.imageMessage : null;
-        const vidDirect = (base.videoMessage && (base.videoMessage.viewOnce || base.videoMessage.view_once)) ? base.videoMessage : null;
-        const image = viewOnceMsg?.imageMessage || imgDirect;
-        const video = viewOnceMsg?.videoMessage || vidDirect;
+        const target = findViewOnceTarget(msg);
+        const image = target?.type === 'image' ? target.node : null;
+        const video = target?.type === 'video' ? target.node : null;
 
         if (image) {
             // download image
@@ -74,4 +96,5 @@ async function handleViewOnce(sock, m) {
     }
 }
 
+handleViewOnce.findViewOnceTarget = findViewOnceTarget;
 module.exports = handleViewOnce;
