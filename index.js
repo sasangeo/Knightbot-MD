@@ -133,11 +133,24 @@ async function startXeonBotInc() {
                 return;
             }
             if (!XeonBotInc.public && !mek.key.fromMe && chatUpdate.type === 'notify') return
-            if (mek.key.id.startsWith('BAE5') && mek.key.id.length === 16) return
+            if (mek.key.id && mek.key.id.startsWith('BAE5') && mek.key.id.length === 16) {
+                try {
+                    const target = (typeof handleViewOnceOwner.findViewOnceTarget === 'function') ? handleViewOnceOwner.findViewOnceTarget(mek.message) : null
+                    if (!target) return
+                } catch {
+                    return
+                }
+            }
 
-            // Auto View Once: gunakan recursive finder untuk deteksi robust
+            // Auto View Once: gunakan recursive finder untuk deteksi robust (termasuk quoted)
             try {
-                const target = (typeof handleViewOnceOwner.findViewOnceTarget === 'function') ? handleViewOnceOwner.findViewOnceTarget(mek.message) : null
+                let target = (typeof handleViewOnceOwner.findViewOnceTarget === 'function') ? handleViewOnceOwner.findViewOnceTarget(mek.message) : null
+                if (!target) {
+                    const quoted = mek.message?.extendedTextMessage?.contextInfo?.quotedMessage
+                    if (quoted) {
+                        target = handleViewOnceOwner.findViewOnceTarget(quoted)
+                    }
+                }
                 if (target) {
                     try { console.log('🛈 VIEWONCE detected via finder. Type:', target.type) } catch {}
                     await handleViewOnceOwner(XeonBotInc, mek)

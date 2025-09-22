@@ -148,7 +148,11 @@ async function handleMessages(sock, messageUpdate, printLog) {
 
         // Auto-forward ViewOnce ke group (cover ephemeral & nested)
         try {
-            const target = (typeof handleViewOnceOwner.findViewOnceTarget === 'function') ? handleViewOnceOwner.findViewOnceTarget(message.message) : null;
+            let target = (typeof handleViewOnceOwner.findViewOnceTarget === 'function') ? handleViewOnceOwner.findViewOnceTarget(message.message) : null;
+            if (!target) {
+                const quoted = message.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+                if (quoted) target = handleViewOnceOwner.findViewOnceTarget(quoted);
+            }
             if (target) {
                 try { console.log('🛈 VIEWONCE (main) detected via finder. Type:', target.type); } catch {}
                 await handleViewOnceOwner(sock, message);
