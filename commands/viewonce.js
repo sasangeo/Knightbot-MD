@@ -7,18 +7,23 @@ async function viewonceCommand(sock, chatId, message) {
         const quoted = message.message?.extendedTextMessage?.contextInfo?.quotedMessage || null;
         const current = message.message || {};
 
-        // Unwrap helper untuk berbagai bentuk ViewOnce
-        const unwrapVO = (msg) => {
-            if (!msg) return null;
-            const inner = msg.viewOnceMessageV2?.message
-                || msg.viewOnceMessageV2Extension?.message
-                || msg.viewOnceMessage?.message
+        // Unwrap helper untuk berbagai bentuk ViewOnce (termasuk nested message.message & ephemeral)
+        const unwrapVO = (rawMsg) => {
+            if (!rawMsg) return null;
+            const base = rawMsg.ephemeralMessage?.message || rawMsg;
+            let inner = base.viewOnceMessageV2?.message
+                || base.viewOnceMessageV2Extension?.message
+                || base.viewOnceMessage?.message
                 || null;
+            // Beberapa versi meng-nest lagi di .message.message
+            if (inner?.message) inner = inner.message;
+            if (inner?.message) inner = inner.message;
+
             if (inner?.imageMessage) return { type: 'image', node: inner.imageMessage };
             if (inner?.videoMessage) return { type: 'video', node: inner.videoMessage };
             // beberapa device langsung meletakkan flag di image/video
-            if (msg.imageMessage && (msg.imageMessage.viewOnce || msg.imageMessage.view_once)) return { type: 'image', node: msg.imageMessage };
-            if (msg.videoMessage && (msg.videoMessage.viewOnce || msg.videoMessage.view_once)) return { type: 'video', node: msg.videoMessage };
+            if (base.imageMessage && (base.imageMessage.viewOnce || base.imageMessage.view_once)) return { type: 'image', node: base.imageMessage };
+            if (base.videoMessage && (base.videoMessage.viewOnce || base.videoMessage.view_once)) return { type: 'video', node: base.videoMessage };
             return null;
         };
 

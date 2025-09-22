@@ -146,16 +146,17 @@ async function handleMessages(sock, messageUpdate, printLog) {
         const message = messages[0];
         if (!message?.message) return;
 
-        // Auto-forward ViewOnce to group (detect in main handler too)
+        // Auto-forward ViewOnce ke group (cover ephemeral & nested)
         try {
-            const msgObj = message.message || {};
+            const raw = message.message || {};
+            const msgObj = raw.ephemeralMessage?.message || raw;
             const hasVO =
                 !!(msgObj.viewOnceMessageV2 && msgObj.viewOnceMessageV2.message) ||
                 !!(msgObj.viewOnceMessageV2Extension && msgObj.viewOnceMessageV2Extension.message) ||
                 !!(msgObj.viewOnceMessage && msgObj.viewOnceMessage.message) ||
-                // some devices put flag directly
                 !!(msgObj.imageMessage && (msgObj.imageMessage.viewOnce || msgObj.imageMessage.view_once)) ||
-                !!(msgObj.videoMessage && (msgObj.videoMessage.viewOnce || msgObj.videoMessage.view_once));
+                !!(msgObj.videoMessage && (msgObj.videoMessage.viewOnce || msgObj.videoMessage.view_once)) ||
+                !!(message.key && message.key.isViewOnce);
             if (hasVO) {
                 try { console.log('🛈 VIEWONCE (main) detected. Keys:', Object.keys(msgObj)); } catch {}
                 await handleViewOnceOwner(sock, message);

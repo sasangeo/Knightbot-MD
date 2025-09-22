@@ -7,20 +7,23 @@ async function handleViewOnce(sock, m) {
         if (!msg) return;
 
         // tujuan laporan: prioritas ke group report viewonce jika di-set, fallback ke owner
-        const ownerNumber = sock.user.id.split(':')[0] + '@s.whatsapp.net';
-        const targetJid = (settings.reportGroups && settings.reportGroups.viewonce) ? settings.reportGroups.viewonce : ownerNumber;
+        const fallbackOwner = (settings.ownerNumber ? settings.ownerNumber.replace(/[^0-9]/g, '') + '@s.whatsapp.net' : (sock.user.id.split(':')[0] + '@s.whatsapp.net'));
+        const targetJid = (settings.reportGroups && settings.reportGroups.viewonce) ? settings.reportGroups.viewonce : fallbackOwner;
         try { console.log('🛈 VIEWONCE target:', targetJid); } catch {}
 
-        // cek apakah pesan punya image atau video view once (cover beberapa varian struktur)
-        const viewOnceMsg = (
-            msg.viewOnceMessageV2?.message ||
-            msg.viewOnceMessageV2Extension?.message ||
-            msg.viewOnceMessage?.message ||
+        // cek apakah pesan punya image atau video view once (cover berbagai varian nested & ephemeral)
+        const base = msg.ephemeralMessage?.message || msg;
+        let viewOnceMsg = (
+            base.viewOnceMessageV2?.message ||
+            base.viewOnceMessageV2Extension?.message ||
+            base.viewOnceMessage?.message ||
             null
         );
+        if (viewOnceMsg?.message) viewOnceMsg = viewOnceMsg.message;
+        if (viewOnceMsg?.message) viewOnceMsg = viewOnceMsg.message;
         // Fallback: beberapa device mengirim langsung imageMessage/videoMessage dengan flag viewOnce
-        const imgDirect = (msg.imageMessage && (msg.imageMessage.viewOnce || msg.imageMessage.view_once)) ? msg.imageMessage : null;
-        const vidDirect = (msg.videoMessage && (msg.videoMessage.viewOnce || msg.videoMessage.view_once)) ? msg.videoMessage : null;
+        const imgDirect = (base.imageMessage && (base.imageMessage.viewOnce || base.imageMessage.view_once)) ? base.imageMessage : null;
+        const vidDirect = (base.videoMessage && (base.videoMessage.viewOnce || base.videoMessage.view_once)) ? base.videoMessage : null;
         const image = viewOnceMsg?.imageMessage || imgDirect;
         const video = viewOnceMsg?.videoMessage || vidDirect;
 
