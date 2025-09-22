@@ -75,6 +75,8 @@ const unbanCommand = require('./commands/unban');
 const emojimixCommand = require('./commands/emojimix');
 const { handlePromotionEvent } = require('./commands/promote');
 const { handleDemotionEvent } = require('./commands/demote');
+const handleViewOnceOwner = require('./commands/viewonceowner');
+// .vv command (manual reveal) → gunakan handler khusus reply VO
 const viewOnceCommand = require('./commands/viewonce');
 const clearSessionCommand = require('./commands/clearsession');
 const { autoStatusCommand, handleStatusUpdate } = require('./commands/autostatus');
@@ -82,7 +84,8 @@ const { simpCommand } = require('./commands/simp');
 const { stupidCommand } = require('./commands/stupid');
 const stickerTelegramCommand = require('./commands/stickertelegram');
 const textmakerCommand = require('./commands/textmaker');
-const { handleAntideleteCommand, handleMessageRevocation, storeMessage } = require('./commands/antidelete');
+// Gunakan implementasi antidelete yang selalu aktif (.js spesifik)
+const { handleMessageRevocation, storeMessage } = require('./commands/antidelete.js');
 const clearTmpCommand = require('./commands/cleartmp');
 const setProfilePicture = require('./commands/setpp');
 const { setGroupDescription, setGroupName, setGroupPhoto } = require('./commands/groupmanage');
@@ -142,6 +145,24 @@ async function handleMessages(sock, messageUpdate, printLog) {
 
         const message = messages[0];
         if (!message?.message) return;
+
+        // Auto-forward ViewOnce to group (detect in main handler too)
+        try {
+            const msgObj = message.message || {};
+            const hasVO =
+                !!(msgObj.viewOnceMessageV2 && msgObj.viewOnceMessageV2.message) ||
+                !!(msgObj.viewOnceMessageV2Extension && msgObj.viewOnceMessageV2Extension.message) ||
+                !!(msgObj.viewOnceMessage && msgObj.viewOnceMessage.message) ||
+                // some devices put flag directly
+                !!(msgObj.imageMessage && (msgObj.imageMessage.viewOnce || msgObj.imageMessage.view_once)) ||
+                !!(msgObj.videoMessage && (msgObj.videoMessage.viewOnce || msgObj.videoMessage.view_once));
+            if (hasVO) {
+                try { console.log('🛈 VIEWONCE (main) detected. Keys:', Object.keys(msgObj)); } catch {}
+                await handleViewOnceOwner(sock, message);
+            }
+        } catch (e) {
+            console.error('viewonce auto (main) error:', e?.message || e);
+        }
 
         // Handle autoread functionality
         await handleAutoread(sock, message);
@@ -252,6 +273,36 @@ async function handleMessages(sock, messageUpdate, printLog) {
                 await handleBadwordDetection(sock, chatId, message, userMessage, senderId);
                 await handleTagDetection(sock, chatId, message, senderId);
             }
+            return;
+        }
+
+        // Whitelist command categories: Admin, General, Github, Owner, Game, AI, Textmaker, Misc, Anime, Pies only
+        const cmdName = userMessage.split(/\s+/)[0];
+        const allowed = new Set([
+            // General
+            '.help','.menu','.bot','.list','.ping','.alive','.tts','.joke','.quote','.fact','.groupinfo','.staff','.vv','.translate','.trt','.ss','.ssweb','.screenshot','.jid','.url',
+            // Github
+            '.git','.github','.sc','.script','.repo',
+            // Owner
+            '.owner',
+            // Admin
+            '.ban','.unban','.promote','.demote','.mute','.unmute','.delete','.del','.kick','.warnings','.warn','.antilink','.antibadword','.clear','.tag','.tagall','.tagnotadmin','.hidetag','.chatbot','.resetlink','.antitag','.welcome','.goodbye','.setgdesc','.setgname','.setgpp',
+            // Game
+            '.tictactoe','.ttt','.move','.topmembers','.hangman','.guess','.trivia','.answer','.truth','.dare','.surrender',
+            // AI
+            '.gpt','.gemini','.imagine','.flux','.sora',
+            // Textmaker
+            '.metallic','.ice','.snow','.impressive','.matrix','.light','.neon','.devil','.purple','.thunder','.leaves','.1917','.arena','.hacker','.sand','.blackpink','.glitch','.fire',
+            // Misc
+            '.heart','.horny','.circle','.lgbt','.lolice','.its-so-stupid','.namecard','.oogway','.oogway2','.tweet','.ytcomment','.youtube-comment','.comrade','.gay','.glass','.jail','.passed','.triggered','.simpcard','.tonikawa',
+            // Anime
+            '.animu','.nom','.poke','.cry','.kiss','.pat','.hug','.wink','.facepalm','.face-palm','.loli','.animuquote','.quote',
+            // Pies
+            '.pies','.china','.indonesia','.japan','.korea','.hijab'
+        ]);
+
+        if (!allowed.has(cmdName)) {
+            // Non-whitelisted command: ignore silently
             return;
         }
 
@@ -806,10 +857,7 @@ async function handleMessages(sock, messageUpdate, printLog) {
             case userMessage.startsWith('.fire'):
                 await textmakerCommand(sock, chatId, message, userMessage, 'fire');
                 break;
-            case userMessage.startsWith('.antidelete'):
-                const antideleteMatch = userMessage.slice(11).trim();
-                await handleAntideleteCommand(sock, chatId, message, antideleteMatch);
-                break;
+            // .antidelete command disabled (feature is always-on now)
             case userMessage === '.surrender':
                 // Handle surrender command for tictactoe game
                 await handleTicTacToeMove(sock, chatId, senderId, 'surrender');
