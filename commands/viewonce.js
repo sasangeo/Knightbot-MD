@@ -28,8 +28,24 @@ async function viewonceCommand(sock, chatId, message) {
         };
 
         // Prioritas: quoted VO → jika tidak ada, cek pesan saat ini
+        try { console.log('ℹ️ .vv quoted keys:', quoted ? Object.keys(quoted) : []); } catch {}
+        try { console.log('ℹ️ .vv current keys:', Object.keys(current || {})); } catch {}
         const target = unwrapVO(quoted) || unwrapVO(current);
+        if (target) {
+            try {
+                const nodeKeys = Object.keys(target.node || {});
+                console.log(`ℹ️ .vv detected target type: ${target.type}, node keys:`, nodeKeys);
+            } catch {}
+        }
         if (!target) {
+            try {
+                // Dump a shallow snapshot for future auto-impl
+                const snap = {
+                    quotedKeys: quoted ? Object.keys(quoted) : [],
+                    currentKeys: Object.keys(current || {})
+                };
+                console.log('⚠️ .vv no target found. Snapshot:', snap);
+            } catch {}
             await sock.sendMessage(chatId, { text: '❌ Balas (reply) pesan View Once (gambar/video) dengan perintah .vv' }, { quoted: message });
             return;
         }
