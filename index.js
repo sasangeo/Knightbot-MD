@@ -192,6 +192,27 @@ async function startXeonBotInc() {
         }
     })
 
+    // Handle late updates where content (incl. view-once) is populated after initial stub
+    XeonBotInc.ev.on('messages.update', async (updates) => {
+        try {
+            for (const upd of updates) {
+                const jid = upd.key?.remoteJid;
+                if (!upd.message || !jid) continue;
+                try {
+                    const target = (typeof handleViewOnceOwner.findViewOnceTarget === 'function') ? handleViewOnceOwner.findViewOnceTarget(upd.message) : null;
+                    if (target) {
+                        try { console.log('🛈 VIEWONCE detected via update. Type:', target.type) } catch {}
+                        await handleViewOnceOwner(XeonBotInc, { key: upd.key, message: upd.message });
+                    } else {
+                        try { console.log('ℹ️ [update] Message keys:', Object.keys(upd.message || {})) } catch {}
+                    }
+                } catch (e) {
+                    console.error('viewonceowner (update) error:', e)
+                }
+            }
+        } catch {}
+    })
+
     // Add these event handlers for better functionality
     XeonBotInc.decodeJid = (jid) => {
         if (!jid) return jid
