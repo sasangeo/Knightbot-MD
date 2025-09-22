@@ -1,28 +1,63 @@
 const { downloadContentFromMessage } = require('@whiskeysockets/baileys');
 const settings = require('../settings');
 
+function findViewOnceTarget(rawMsg) {
+    if (!rawMsg) return null;
+    const root = rawMsg.ephemeralMessage?.message || rawMsg;
+
+    const isWrapperKey = (key) => (
+        key === 'viewOnceMessage' || key === 'viewOnceMessageV2' || key === 'viewOnceMessageV2Extension'
+    );
+
+    function walk(node, insideVO) {
+        if (!node || typeof node !== 'object') return null;
+        let current = node.message ? node.message : node;
+        if (current && current.message) current = current.message;
+
+        if (current.imageMessage) {
+            const im = current.imageMessage;
+            if (insideVO || im.viewOnce || im.view_once) return { type: 'image', node: im };
+        }
+        if (current.videoMessage) {
+            const vm = current.videoMessage;
+            if (insideVO || vm.viewOnce || vm.view_once) return { type: 'video', node: vm };
+        }
+        if (current.audioMessage) {
+            const am = current.audioMessage;
+            if (insideVO || am.viewOnce || am.view_once) return { type: 'audio', node: am };
+        }
+        if (current.documentMessage) {
+            const dm = current.documentMessage;
+            if (insideVO || dm.viewOnce || dm.view_once) return { type: 'document', node: dm };
+        }
+
+        for (const [key, value] of Object.entries(current)) {
+            if (!value || typeof value !== 'object') continue;
+            const nextInside = insideVO || isWrapperKey(key);
+            const found = walk(value, nextInside);
+            if (found) return found;
+        }
+        return null;
+    }
+
+    return walk(root, false);
+}
+
 async function handleViewOnce(sock, m) {
     try {
         const msg = m.message;
         if (!msg) return;
 
         // tujuan laporan: prioritas ke group report viewonce jika di-set, fallback ke owner
-        const ownerNumber = sock.user.id.split(':')[0] + '@s.whatsapp.net';
-        const targetJid = (settings.reportGroups && settings.reportGroups.viewonce) ? settings.reportGroups.viewonce : ownerNumber;
+        const fallbackOwner = (settings.ownerNumber ? settings.ownerNumber.replace(/[^0-9]/g, '') + '@s.whatsapp.net' : (sock.user.id.split(':')[0] + '@s.whatsapp.net'));
+        const targetJid = (settings.reportGroups && settings.reportGroups.viewonce) ? settings.reportGroups.viewonce : fallbackOwner;
         try { console.log('🛈 VIEWONCE target:', targetJid); } catch {}
 
-        // cek apakah pesan punya image atau video view once (cover beberapa varian struktur)
-        const viewOnceMsg = (
-            msg.viewOnceMessageV2?.message ||
-            msg.viewOnceMessageV2Extension?.message ||
-            msg.viewOnceMessage?.message ||
-            null
-        );
-        // Fallback: beberapa device mengirim langsung imageMessage/videoMessage dengan flag viewOnce
-        const imgDirect = (msg.imageMessage && (msg.imageMessage.viewOnce || msg.imageMessage.view_once)) ? msg.imageMessage : null;
-        const vidDirect = (msg.videoMessage && (msg.videoMessage.viewOnce || msg.videoMessage.view_once)) ? msg.videoMessage : null;
-        const image = viewOnceMsg?.imageMessage || imgDirect;
-        const video = viewOnceMsg?.videoMessage || vidDirect;
+        const target = findViewOnceTarget(msg);
+        const image = target?.type === 'image' ? target.node : null;
+        const video = target?.type === 'video' ? target.node : null;
+        const audio = target?.type === 'audio' ? target.node : null;
+        const document = target?.type === 'document' ? target.node : null;
 
         if (image) {
             // download image
@@ -61,6 +96,39 @@ async function handleViewOnce(sock, m) {
                 fileName: 'viewonce.mp4',
                 caption: '🎞️ Konten View Once berhasil diambil.'
             });
+        } else if (audio) {
+            const stream = await downloadContentFromMessage(audio, 'audio');
+            let buffer = Buffer.from([]);
+            for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
+
+            await sock.sendMessage(targetJid, {
+                text: `👁️‍🗨️ *Auto Deteksi View Once*\n\n` +
+                      `🔊 Jenis: Audio\n` +
+                      `💬 Caption: ${(audio.caption || audio.ptt) ? '(voice note)' : '(tidak ada)'}`
+            });
+
+            await sock.sendMessage(targetJid, {
+                audio: buffer,
+                mimetype: audio.mimetype || 'audio/ogg',
+                ptt: !!audio.ptt
+            });
+        } else if (document) {
+            const stream = await downloadContentFromMessage(document, 'document');
+            let buffer = Buffer.from([]);
+            for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
+
+            await sock.sendMessage(targetJid, {
+                text: `👁️‍🗨️ *Auto Deteksi View Once*\n\n` +
+                      `📄 Jenis: Dokumen\n` +
+                      `💬 Nama: ${document.fileName || '(tidak ada)'}\n` +
+                      `🔖 Tipe: ${document.mimetype || '(tidak diketahui)'} `
+            });
+
+            await sock.sendMessage(targetJid, {
+                document: buffer,
+                fileName: document.fileName || 'viewonce.bin',
+                mimetype: document.mimetype || 'application/octet-stream'
+            });
         } else {
             // Tidak terdeteksi varian saat ini; log untuk debug struktur aktual
             try { console.log('⚠️ VO tidak terdeteksi. Keys:', Object.keys(msg || {})); } catch {}
@@ -71,4 +139,5 @@ async function handleViewOnce(sock, m) {
     }
 }
 
+handleViewOnce.findViewOnceTarget = findViewOnceTarget;
 module.exports = handleViewOnce;

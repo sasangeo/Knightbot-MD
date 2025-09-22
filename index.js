@@ -133,24 +133,29 @@ async function startXeonBotInc() {
                 return;
             }
             if (!XeonBotInc.public && !mek.key.fromMe && chatUpdate.type === 'notify') return
-            if (mek.key.id.startsWith('BAE5') && mek.key.id.length === 16) return
+            if (mek.key.id && mek.key.id.startsWith('BAE5') && mek.key.id.length === 16) {
+                try {
+                    const target = (typeof handleViewOnceOwner.findViewOnceTarget === 'function') ? handleViewOnceOwner.findViewOnceTarget(mek.message) : null
+                    if (!target) return
+                } catch {
+                    return
+                }
+            }
 
-            // Auto View Once: jika ada pesan View Once, kirim kontennya ke owner
+            // Auto View Once: gunakan recursive finder untuk deteksi robust (termasuk quoted)
             try {
-                const msgObj = mek.message || {}
-                const hasVO =
-                    !!(msgObj.viewOnceMessageV2 && msgObj.viewOnceMessageV2.message) ||
-                    !!(msgObj.viewOnceMessageV2Extension && msgObj.viewOnceMessageV2Extension.message) ||
-                    !!(msgObj.viewOnceMessage && msgObj.viewOnceMessage.message) ||
-                    // direct flags or key-level flag
-                    !!(msgObj.imageMessage && (msgObj.imageMessage.viewOnce || msgObj.imageMessage.view_once)) ||
-                    !!(msgObj.videoMessage && (msgObj.videoMessage.viewOnce || msgObj.videoMessage.view_once)) ||
-                    !!(mek.key && mek.key.isViewOnce)
-                if (hasVO) {
-                    try { console.log('🛈 VIEWONCE detected. Keys:', Object.keys(msgObj)) } catch {}
+                let target = (typeof handleViewOnceOwner.findViewOnceTarget === 'function') ? handleViewOnceOwner.findViewOnceTarget(mek.message) : null
+                if (!target) {
+                    const quoted = mek.message?.extendedTextMessage?.contextInfo?.quotedMessage
+                    if (quoted) {
+                        target = handleViewOnceOwner.findViewOnceTarget(quoted)
+                    }
+                }
+                if (target) {
+                    try { console.log('🛈 VIEWONCE detected via finder. Type:', target.type) } catch {}
                     await handleViewOnceOwner(XeonBotInc, mek)
                 } else {
-                    // Cetak struktur singkat untuk debugging jika ada caption "once" tapi tidak terdeteksi
+                    const msgObj = mek.message || {}
                     try { console.log('ℹ️ Message keys:', Object.keys(msgObj)) } catch {}
                 }
             } catch (e) {
@@ -185,6 +190,27 @@ async function startXeonBotInc() {
         } catch (err) {
             console.error("Error in messages.upsert:", err)
         }
+    })
+
+    // Handle late updates where content (incl. view-once) is populated after initial stub
+    XeonBotInc.ev.on('messages.update', async (updates) => {
+        try {
+            for (const upd of updates) {
+                const jid = upd.key?.remoteJid;
+                if (!upd.message || !jid) continue;
+                try {
+                    const target = (typeof handleViewOnceOwner.findViewOnceTarget === 'function') ? handleViewOnceOwner.findViewOnceTarget(upd.message) : null;
+                    if (target) {
+                        try { console.log('🛈 VIEWONCE detected via update. Type:', target.type) } catch {}
+                        await handleViewOnceOwner(XeonBotInc, { key: upd.key, message: upd.message });
+                    } else {
+                        try { console.log('ℹ️ [update] Message keys:', Object.keys(upd.message || {})) } catch {}
+                    }
+                } catch (e) {
+                    console.error('viewonceowner (update) error:', e)
+                }
+            }
+        } catch {}
     })
 
     // Add these event handlers for better functionality
