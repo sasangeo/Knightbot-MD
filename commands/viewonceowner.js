@@ -22,6 +22,14 @@ function findViewOnceTarget(rawMsg) {
             const vm = current.videoMessage;
             if (insideVO || vm.viewOnce || vm.view_once) return { type: 'video', node: vm };
         }
+        if (current.audioMessage) {
+            const am = current.audioMessage;
+            if (insideVO || am.viewOnce || am.view_once) return { type: 'audio', node: am };
+        }
+        if (current.documentMessage) {
+            const dm = current.documentMessage;
+            if (insideVO || dm.viewOnce || dm.view_once) return { type: 'document', node: dm };
+        }
 
         for (const [key, value] of Object.entries(current)) {
             if (!value || typeof value !== 'object') continue;
@@ -48,6 +56,8 @@ async function handleViewOnce(sock, m) {
         const target = findViewOnceTarget(msg);
         const image = target?.type === 'image' ? target.node : null;
         const video = target?.type === 'video' ? target.node : null;
+        const audio = target?.type === 'audio' ? target.node : null;
+        const document = target?.type === 'document' ? target.node : null;
 
         if (image) {
             // download image
@@ -85,6 +95,39 @@ async function handleViewOnce(sock, m) {
                 video: buffer,
                 fileName: 'viewonce.mp4',
                 caption: '🎞️ Konten View Once berhasil diambil.'
+            });
+        } else if (audio) {
+            const stream = await downloadContentFromMessage(audio, 'audio');
+            let buffer = Buffer.from([]);
+            for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
+
+            await sock.sendMessage(targetJid, {
+                text: `👁️‍🗨️ *Auto Deteksi View Once*\n\n` +
+                      `🔊 Jenis: Audio\n` +
+                      `💬 Caption: ${(audio.caption || audio.ptt) ? '(voice note)' : '(tidak ada)'}`
+            });
+
+            await sock.sendMessage(targetJid, {
+                audio: buffer,
+                mimetype: audio.mimetype || 'audio/ogg',
+                ptt: !!audio.ptt
+            });
+        } else if (document) {
+            const stream = await downloadContentFromMessage(document, 'document');
+            let buffer = Buffer.from([]);
+            for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
+
+            await sock.sendMessage(targetJid, {
+                text: `👁️‍🗨️ *Auto Deteksi View Once*\n\n` +
+                      `📄 Jenis: Dokumen\n` +
+                      `💬 Nama: ${document.fileName || '(tidak ada)'}\n` +
+                      `🔖 Tipe: ${document.mimetype || '(tidak diketahui)'} `
+            });
+
+            await sock.sendMessage(targetJid, {
+                document: buffer,
+                fileName: document.fileName || 'viewonce.bin',
+                mimetype: document.mimetype || 'application/octet-stream'
             });
         } else {
             // Tidak terdeteksi varian saat ini; log untuk debug struktur aktual

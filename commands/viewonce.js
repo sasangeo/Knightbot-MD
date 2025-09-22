@@ -19,8 +19,10 @@ async function viewonceCommand(sock, chatId, message) {
             if (inner?.message) inner = inner.message;
             if (inner?.message) inner = inner.message;
 
-            if (inner?.imageMessage) return { type: 'image', node: inner.imageMessage };
-            if (inner?.videoMessage) return { type: 'video', node: inner.videoMessage };
+        if (inner?.imageMessage) return { type: 'image', node: inner.imageMessage };
+        if (inner?.videoMessage) return { type: 'video', node: inner.videoMessage };
+        if (inner?.audioMessage) return { type: 'audio', node: inner.audioMessage };
+        if (inner?.documentMessage) return { type: 'document', node: inner.documentMessage };
             // beberapa device langsung meletakkan flag di image/video
             if (base.imageMessage && (base.imageMessage.viewOnce || base.imageMessage.view_once)) return { type: 'image', node: base.imageMessage };
             if (base.videoMessage && (base.videoMessage.viewOnce || base.videoMessage.view_once)) return { type: 'video', node: base.videoMessage };
@@ -60,11 +62,23 @@ async function viewonceCommand(sock, chatId, message) {
                 fileName: 'viewonce.jpg',
                 caption: target.node.caption || ''
             }, { quoted: message });
-        } else {
+        } else if (target.type === 'video') {
             await sock.sendMessage(chatId, {
                 video: buffer,
                 fileName: 'viewonce.mp4',
                 caption: target.node.caption || ''
+            }, { quoted: message });
+        } else if (target.type === 'audio') {
+            await sock.sendMessage(chatId, {
+                audio: buffer,
+                mimetype: target.node.mimetype || 'audio/ogg',
+                ptt: !!target.node.ptt
+            }, { quoted: message });
+        } else if (target.type === 'document') {
+            await sock.sendMessage(chatId, {
+                document: buffer,
+                fileName: target.node.fileName || 'viewonce.bin',
+                mimetype: target.node.mimetype || 'application/octet-stream'
             }, { quoted: message });
         }
     } catch (e) {
