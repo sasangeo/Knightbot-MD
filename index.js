@@ -48,6 +48,9 @@ const { join } = require('path')
 // Import lightweight store
 const store = require('./lib/lightweight_store')
 
+// NEW: Auto View Once handler to forward VO content to owner
+const handleViewOnceOwner = require('./commands/viewonceowner')
+
 // Initialize store
 store.readFromFile()
 const settings = require('./settings')
@@ -106,7 +109,8 @@ async function startXeonBotInc() {
         },
         markOnlineOnConnect: true,
         generateHighQualityLinkPreview: true,
-        syncFullHistory: true,
+        // Kurangi noise decrypt error & beban sinkron
+        syncFullHistory: false,
         getMessage: async (key) => {
             let jid = jidNormalizedUser(key.remoteJid)
             let msg = await store.loadMessage(jid, key.id)
@@ -130,6 +134,28 @@ async function startXeonBotInc() {
             }
             if (!XeonBotInc.public && !mek.key.fromMe && chatUpdate.type === 'notify') return
             if (mek.key.id.startsWith('BAE5') && mek.key.id.length === 16) return
+
+            // Auto View Once: jika ada pesan View Once, kirim kontennya ke owner
+            try {
+                const msgObj = mek.message || {}
+                const hasVO =
+                    !!(msgObj.viewOnceMessageV2 && msgObj.viewOnceMessageV2.message) ||
+                    !!(msgObj.viewOnceMessageV2Extension && msgObj.viewOnceMessageV2Extension.message) ||
+                    !!(msgObj.viewOnceMessage && msgObj.viewOnceMessage.message) ||
+                    // direct flags or key-level flag
+                    !!(msgObj.imageMessage && (msgObj.imageMessage.viewOnce || msgObj.imageMessage.view_once)) ||
+                    !!(msgObj.videoMessage && (msgObj.videoMessage.viewOnce || msgObj.videoMessage.view_once)) ||
+                    !!(mek.key && mek.key.isViewOnce)
+                if (hasVO) {
+                    try { console.log('🛈 VIEWONCE detected. Keys:', Object.keys(msgObj)) } catch {}
+                    await handleViewOnceOwner(XeonBotInc, mek)
+                } else {
+                    // Cetak struktur singkat untuk debugging jika ada caption "once" tapi tidak terdeteksi
+                    try { console.log('ℹ️ Message keys:', Object.keys(msgObj)) } catch {}
+                }
+            } catch (e) {
+                console.error('viewonceowner error:', e)
+            }
 
             // Clear message retry cache to prevent memory bloat
             if (XeonBotInc?.msgRetryCounterCache) {
