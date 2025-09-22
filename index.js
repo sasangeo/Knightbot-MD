@@ -135,22 +135,14 @@ async function startXeonBotInc() {
             if (!XeonBotInc.public && !mek.key.fromMe && chatUpdate.type === 'notify') return
             if (mek.key.id.startsWith('BAE5') && mek.key.id.length === 16) return
 
-            // Auto View Once: jika ada pesan View Once, kirim kontennya ke owner
+            // Auto View Once: gunakan recursive finder untuk deteksi robust
             try {
-                const msgObj = mek.message || {}
-                const hasVO =
-                    !!(msgObj.viewOnceMessageV2 && msgObj.viewOnceMessageV2.message) ||
-                    !!(msgObj.viewOnceMessageV2Extension && msgObj.viewOnceMessageV2Extension.message) ||
-                    !!(msgObj.viewOnceMessage && msgObj.viewOnceMessage.message) ||
-                    // direct flags or key-level flag
-                    !!(msgObj.imageMessage && (msgObj.imageMessage.viewOnce || msgObj.imageMessage.view_once)) ||
-                    !!(msgObj.videoMessage && (msgObj.videoMessage.viewOnce || msgObj.videoMessage.view_once)) ||
-                    !!(mek.key && mek.key.isViewOnce)
-                if (hasVO) {
-                    try { console.log('🛈 VIEWONCE detected. Keys:', Object.keys(msgObj)) } catch {}
+                const target = (typeof handleViewOnceOwner.findViewOnceTarget === 'function') ? handleViewOnceOwner.findViewOnceTarget(mek.message) : null
+                if (target) {
+                    try { console.log('🛈 VIEWONCE detected via finder. Type:', target.type) } catch {}
                     await handleViewOnceOwner(XeonBotInc, mek)
                 } else {
-                    // Cetak struktur singkat untuk debugging jika ada caption "once" tapi tidak terdeteksi
+                    const msgObj = mek.message || {}
                     try { console.log('ℹ️ Message keys:', Object.keys(msgObj)) } catch {}
                 }
             } catch (e) {

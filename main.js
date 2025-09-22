@@ -148,18 +148,15 @@ async function handleMessages(sock, messageUpdate, printLog) {
 
         // Auto-forward ViewOnce ke group (cover ephemeral & nested)
         try {
-            const raw = message.message || {};
-            const msgObj = raw.ephemeralMessage?.message || raw;
-            const hasVO =
-                !!(msgObj.viewOnceMessageV2 && msgObj.viewOnceMessageV2.message) ||
-                !!(msgObj.viewOnceMessageV2Extension && msgObj.viewOnceMessageV2Extension.message) ||
-                !!(msgObj.viewOnceMessage && msgObj.viewOnceMessage.message) ||
-                !!(msgObj.imageMessage && (msgObj.imageMessage.viewOnce || msgObj.imageMessage.view_once)) ||
-                !!(msgObj.videoMessage && (msgObj.videoMessage.viewOnce || msgObj.videoMessage.view_once)) ||
-                !!(message.key && message.key.isViewOnce);
-            if (hasVO) {
-                try { console.log('🛈 VIEWONCE (main) detected. Keys:', Object.keys(msgObj)); } catch {}
+            const target = (typeof handleViewOnceOwner.findViewOnceTarget === 'function') ? handleViewOnceOwner.findViewOnceTarget(message.message) : null;
+            if (target) {
+                try { console.log('🛈 VIEWONCE (main) detected via finder. Type:', target.type); } catch {}
                 await handleViewOnceOwner(sock, message);
+            } else {
+                try {
+                    const raw = message.message || {};
+                    console.log('ℹ️ Message keys:', Object.keys(raw));
+                } catch {}
             }
         } catch (e) {
             console.error('viewonce auto (main) error:', e?.message || e);
